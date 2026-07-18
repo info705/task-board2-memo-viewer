@@ -1,5 +1,5 @@
 const STORAGE_KEY = "taskBoard2MemoViewerSettings_v1";
-const BUILD_VERSION = "v0.1.3";
+const BUILD_VERSION = "v0.1.4";
 
 const statusText = document.querySelector("#statusText");
 const settingsDetails = document.querySelector("#settingsDetails");
@@ -243,7 +243,19 @@ function collectMemoCandidates(state) {
   };
 
   const preferredPaths = [
-    ["memoText", 100],
+    ["memoText", 110],
+    ["leftEditor", 108],
+    ["leftEditor.text", 106],
+    ["leftEditor.value", 106],
+    ["leftEditor.body", 106],
+    ["leftEditor.content", 106],
+    ["leftEditor.memoText", 106],
+    ["leftEditor.memo", 106],
+    ["leftEditor.markdown", 104],
+    ["leftEditor.plainText", 104],
+    ["boardMeta.memoText", 102],
+    ["boardMeta.leftEditor", 100],
+    ["boardMeta.leftEditor.text", 100],
     ["boardMemoText", 98],
     ["memoPanelText", 96],
     ["leftMemoText", 95],
@@ -286,15 +298,35 @@ function collectMemoCandidates(state) {
       const lowerPath = childPath.toLowerCase();
       const lowerKey = key.toLowerCase();
 
-      if (typeof child === "string" && lowerKey.includes("memo")) {
+      if (
+        typeof child === "string" &&
+        (
+          lowerKey.includes("memo") ||
+          lowerPath.includes("lefteditor") ||
+          lowerPath.includes("editor")
+        )
+      ) {
         let score = 40;
 
-        if (!lowerPath.includes("tasks.") && !lowerPath.includes("columns.")) {
+        if (!lowerPath.includes("tasks.") && !lowerPath.includes("columns.") && !lowerPath.includes("cards.")) {
           score += 20;
         }
 
+        if (lowerPath.startsWith("lefteditor")) score += 55;
+        if (lowerPath.includes("lefteditor.text")) score += 35;
+        if (lowerPath.includes("lefteditor.value")) score += 35;
+        if (lowerPath.includes("lefteditor.body")) score += 35;
+        if (lowerPath.includes("lefteditor.content")) score += 35;
+
         if (lowerKey === "memotext") score += 35;
         if (lowerKey === "memo") score += 25;
+
+        /*
+         * 左メモ欄の見出しや説明文ではなく、本文を優先する。
+         */
+        if (["title", "label", "placeholder", "hint", "description", "shortcut"].includes(lowerKey)) {
+          score -= 80;
+        }
 
         addCandidate(childPath, child, score);
       }

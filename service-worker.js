@@ -12,5 +12,5 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("fetch", () => {
-  // v0.1.3ではキャッシュを使用しない
+  // v0.1.4ではキャッシュを使用しない
 });
