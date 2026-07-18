@@ -1,4 +1,4 @@
-const CACHE_NAME = "task-board2-memo-viewer-v0.1.0";
+const CACHE_NAME = "task-board2-memo-viewer-v0.1.2";
 const ASSETS = [
   "./",
   "./index.html",

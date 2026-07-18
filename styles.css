@@ -252,3 +252,8 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+
+.diagnostic-block {
+  margin-top: 12px;
+}

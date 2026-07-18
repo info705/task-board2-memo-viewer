@@ -15,6 +15,9 @@ const memoView = document.querySelector("#memoView");
 const rawMemoText = document.querySelector("#rawMemoText");
 const lastFetchedText = document.querySelector("#lastFetchedText");
 const jsonUpdatedText = document.querySelector("#jsonUpdatedText");
+const memoSourceText = document.querySelector("#memoSourceText");
+const rootKeysText = document.querySelector("#rootKeysText");
+const memoCandidatesText = document.querySelector("#memoCandidatesText");
 
 let settings = {
   appKey: "",
@@ -103,10 +106,14 @@ async function openDropboxAuthUrl() {
   });
 
   const url = `https://www.dropbox.com/oauth2/authorize?${params.toString()}`;
-  window.open(url, "_blank", "noopener,noreferrer");
 
-  setStatus("Dropbox認証後に表示されるコードを貼り付けてください。");
-  settingsDetails.open = true;
+  /*
+   * スマホブラウザでは非同期処理後の window.open がブロックされることがあるため、
+   * 別タブではなく同じタブでDropbox認証画面へ移動する。
+   * 認証コードが表示されたら、このページへ戻ってコードを貼り付ける。
+   */
+  setStatus("Dropbox認証ページへ移動します。認証コードが表示されたら、このページへ戻って貼り付けてください。");
+  window.location.href = url;
 }
 
 async function exchangeAuthCode() {
@@ -212,20 +219,136 @@ async function downloadDropboxJson() {
   return JSON.parse(text);
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function getByPath(object, path) {
+  return path.split(".").reduce((current, key) => current?.[key], object);
+}
+
+function collectMemoCandidates(state) {
+  const candidates = [];
+
+  const addCandidate = (path, value, score = 0) => {
+    if (typeof value !== "string") return;
+
+    candidates.push({
+      path,
+      value,
+      score,
+      length: value.length
+    });
+  };
+
+  const preferredPaths = [
+    ["memoText", 100],
+    ["boardMemoText", 98],
+    ["memoPanelText", 96],
+    ["leftMemoText", 95],
+    ["sideMemoText", 95],
+    ["memo", 90],
+    ["memo.text", 88],
+    ["memo.value", 88],
+    ["memo.body", 86],
+    ["memo.content", 86],
+    ["memoPanel.text", 88],
+    ["memoPanel.value", 88],
+    ["memoPanel.body", 86],
+    ["memoPanel.content", 86],
+    ["board.memoText", 82],
+    ["board.memo", 80],
+    ["board.memo.text", 80],
+    ["ui.memoText", 78],
+    ["settings.memoText", 70]
+  ];
+
+  for (const [path, score] of preferredPaths) {
+    addCandidate(path, getByPath(state, path), score);
+  }
+
+  const visited = new WeakSet();
+
+  const walk = (value, path, depth = 0) => {
+    if (depth > 5) return;
+    if (!isPlainObject(value) && !Array.isArray(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+
+    const entries = Array.isArray(value)
+      ? value.entries()
+      : Object.entries(value);
+
+    for (const [rawKey, child] of entries) {
+      const key = String(rawKey);
+      const childPath = path ? `${path}.${key}` : key;
+      const lowerPath = childPath.toLowerCase();
+      const lowerKey = key.toLowerCase();
+
+      if (typeof child === "string" && lowerKey.includes("memo")) {
+        let score = 40;
+
+        if (!lowerPath.includes("tasks.") && !lowerPath.includes("columns.")) {
+          score += 20;
+        }
+
+        if (lowerKey === "memotext") score += 35;
+        if (lowerKey === "memo") score += 25;
+
+        addCandidate(childPath, child, score);
+      }
+
+      if (isPlainObject(child) || Array.isArray(child)) {
+        walk(child, childPath, depth + 1);
+      }
+    }
+  };
+
+  walk(state, "", 0);
+
+  const unique = new Map();
+  for (const candidate of candidates) {
+    if (!unique.has(candidate.path)) {
+      unique.set(candidate.path, candidate);
+    }
+  }
+
+  return [...unique.values()]
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.length - a.length;
+    });
+}
+
 function extractMemoText(state) {
-  if (typeof state?.memoText === "string") {
-    return state.memoText;
+  const candidates = collectMemoCandidates(state);
+  const best = candidates.find(candidate => candidate.length > 0) ?? candidates[0];
+
+  return {
+    text: best?.value ?? "",
+    sourcePath: best?.path ?? "",
+    candidates
+  };
+}
+
+function renderDiagnostics(state, extraction) {
+  if (memoSourceText) {
+    memoSourceText.textContent = extraction.sourcePath || "未検出";
   }
 
-  if (typeof state?.memo === "string") {
-    return state.memo;
+  if (rootKeysText) {
+    rootKeysText.textContent = isPlainObject(state)
+      ? Object.keys(state).join(", ")
+      : "JSON root is not an object";
   }
 
-  if (typeof state?.memoPanel?.text === "string") {
-    return state.memoPanel.text;
-  }
+  if (memoCandidatesText) {
+    const lines = extraction.candidates.slice(0, 20).map(candidate => {
+      return `${candidate.path} / ${candidate.length.toLocaleString("ja-JP")}文字`;
+    });
 
-  return "";
+    memoCandidatesText.textContent = lines.length ? lines.join("\n") : "memo系の候補なし";
+  }
 }
 
 function formatDateTime(value) {
@@ -290,14 +413,21 @@ async function refreshMemo() {
   setStatus("Dropboxから読込中…");
 
   const state = await downloadDropboxJson();
-  const memoText = extractMemoText(state);
+  const extraction = extractMemoText(state);
+  const memoText = extraction.text;
 
+  renderDiagnostics(state, extraction);
   renderMemo(memoText);
   lastFetchedText.textContent = formatDateTime(new Date().toISOString());
   jsonUpdatedText.textContent = formatDateTime(state?.updatedAt);
 
   const chars = memoText.length;
-  setStatus(`読込完了：${chars.toLocaleString("ja-JP")}文字`);
+  if (extraction.sourcePath) {
+    setStatus(`読込完了：${chars.toLocaleString("ja-JP")}文字 / 取得元：${extraction.sourcePath}`);
+  } else {
+    setStatus("読込完了。ただしメモ欄の保存場所を検出できませんでした。", "error");
+    settingsDetails.open = true;
+  }
 }
 
 function disconnectDropbox() {
