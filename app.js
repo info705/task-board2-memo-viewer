@@ -1,4 +1,5 @@
 const STORAGE_KEY = "taskBoard2MemoViewerSettings_v1";
+const BUILD_VERSION = "v0.1.3";
 
 const statusText = document.querySelector("#statusText");
 const settingsDetails = document.querySelector("#settingsDetails");
@@ -332,18 +333,22 @@ function extractMemoText(state) {
 }
 
 function renderDiagnostics(state, extraction) {
+  const rootKeys = isPlainObject(state)
+    ? Object.keys(state)
+    : [];
+
   if (memoSourceText) {
     memoSourceText.textContent = extraction.sourcePath || "未検出";
   }
 
   if (rootKeysText) {
-    rootKeysText.textContent = isPlainObject(state)
-      ? Object.keys(state).join(", ")
-      : "JSON root is not an object";
+    rootKeysText.textContent = rootKeys.length
+      ? rootKeys.join(", ")
+      : "JSON root is not an object or has no keys";
   }
 
   if (memoCandidatesText) {
-    const lines = extraction.candidates.slice(0, 20).map(candidate => {
+    const lines = extraction.candidates.slice(0, 30).map(candidate => {
       return `${candidate.path} / ${candidate.length.toLocaleString("ja-JP")}文字`;
     });
 
@@ -410,7 +415,11 @@ function renderMemo(text) {
 }
 
 async function refreshMemo() {
-  setStatus("Dropboxから読込中…");
+  setStatus(`Dropboxから読込中… / ${BUILD_VERSION}`);
+
+  if (memoSourceText) memoSourceText.textContent = "読込中";
+  if (rootKeysText) rootKeysText.textContent = "読込中";
+  if (memoCandidatesText) memoCandidatesText.textContent = "読込中";
 
   const state = await downloadDropboxJson();
   const extraction = extractMemoText(state);
@@ -423,9 +432,9 @@ async function refreshMemo() {
 
   const chars = memoText.length;
   if (extraction.sourcePath) {
-    setStatus(`読込完了：${chars.toLocaleString("ja-JP")}文字 / 取得元：${extraction.sourcePath}`);
+    setStatus(`読込完了：${chars.toLocaleString("ja-JP")}文字 / 取得元：${extraction.sourcePath} / ${BUILD_VERSION}`);
   } else {
-    setStatus("読込完了。ただしメモ欄の保存場所を検出できませんでした。", "error");
+    setStatus(`読込完了。ただしメモ欄の保存場所を検出できませんでした。 / ${BUILD_VERSION}`, "error");
     settingsDetails.open = true;
   }
 }
@@ -485,20 +494,24 @@ window.addEventListener("load", () => {
   loadSettings();
 
   if (settings.refreshToken) {
-    setStatus("Dropbox接続済み。更新ボタンで読み込めます。");
+    setStatus(`Dropbox接続済み。更新ボタンで読み込めます。 / ${BUILD_VERSION}`);
     refreshMemo().catch(error => {
       console.error(error);
       setStatus(error.message, "error");
       settingsDetails.open = true;
     });
   } else {
-    setStatus("Dropbox未接続。設定を開いて接続してください。");
+    setStatus(`Dropbox未接続。設定を開いて接続してください。 / ${BUILD_VERSION}`);
     settingsDetails.open = true;
   }
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {
-      // PWAキャッシュ登録に失敗しても閲覧機能には影響しない
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      for (const registration of registrations) {
+        registration.unregister();
+      }
+    }).catch(() => {
+      // 古いPWAキャッシュ解除に失敗しても読込処理は継続する
     });
   }
 });
