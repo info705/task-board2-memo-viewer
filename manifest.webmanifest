@@ -1,0 +1,15 @@
+{
+  "name": "タスクボード2 メモビューア",
+  "short_name": "TB2メモ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f2eb",
+  "theme_color": "#f5f2eb",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
